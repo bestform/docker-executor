@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/bestform/dockerExecutor/internal"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"golang.org/x/net/context"
@@ -9,9 +10,6 @@ import (
 	"os"
 	"strings"
 )
-
-var CMD = []string{"php", "-v"}
-var IDENTIFIER = "-php"
 
 func main() {
 	var err error
@@ -23,6 +21,9 @@ func main() {
 		}
 	}()
 
+	config, err := internal.ConfigFromEnvironment()
+	if err != nil { return }
+
 	cli, err := client.NewEnvClient()
 	if err != nil { return }
 
@@ -30,17 +31,18 @@ func main() {
 	if err != nil { return }
 
 	for _, c := range containers {
-		if isTargetContainerByName(c.Names) {
-			err = executeCommand(cli, c)
+		if isTargetContainerByName(c.Names, config) {
+			err = executeCommand(cli, c, config)
 			if err != nil { return }
 		}
 	}
 
 }
 
-func executeCommand(cli *client.Client, c types.Container) error {
+func executeCommand(cli *client.Client, c types.Container, config internal.Config) error {
 	fmt.Println("Executing on container", c.ID)
-	idResp, err := cli.ContainerExecCreate(context.Background(), c.ID, types.ExecConfig{Cmd:CMD, AttachStdout:true, AttachStderr:true})
+	cmdParts := strings.Split(config.Cmd, " ")
+	idResp, err := cli.ContainerExecCreate(context.Background(), c.ID, types.ExecConfig{Cmd:cmdParts, AttachStdout:true, AttachStderr:true})
 	if err != nil { return err }
 
 	hjResp, err := cli.ContainerExecAttach(context.Background(), idResp.ID, types.ExecConfig{})
@@ -55,9 +57,9 @@ func executeCommand(cli *client.Client, c types.Container) error {
 	return nil
 }
 
-func isTargetContainerByName(names []string) bool {
+func isTargetContainerByName(names []string, config internal.Config) bool {
 	for _, n := range names {
-		if strings.Contains(n, IDENTIFIER) {
+		if strings.Contains(n, config.Identifier) {
 			return true
 		}
 	}
